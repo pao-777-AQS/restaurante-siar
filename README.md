@@ -1,86 +1,24 @@
-# Módulo 1: Gestión de Usuarios - SIAR
+# SIAR — Sistema de Información para la Administración de Restaurantes
 
-## Diagrama de Clases UML
+¡Bienvenido al repositorio del proyecto **SIAR**! 🍽️
 
-```mermaid
-classDiagram
-    class Usuario {
-        - int idUsuario
-        - String nombres
-        - String documento
-        - String correo
-        - String contrasenaCifrada
-        - EstadoUsuario estado
-        - DateTime fechaCreacion
-        + autenticar(String contrasena) bool
-        + actualizarDatos(String nombres, String correo) void
-        + cambiarEstado(EstadoUsuario nuevoEstado) void
-        + cambiarContrasena(String nuevaContrasena) void
-    }
+SIAR es un sistema de información diseñado para apoyar la administración integral de un restaurante, abarcando la gestión de usuarios, el manejo del menú y el control de mesas, entre otros procesos operativos.
 
-    class Rol {
-        - int idRol
-        - String nombreRol
-        - String descripcion
-        - bool esPredefinido
-        + asignarPermiso(Permiso permiso) void
-        + removerPermiso(Permiso permiso) void
-        + esEliminable() bool
-    }
+Este proyecto se desarrolla en el marco de la asignatura **Ingeniería de Software II** (UniAJC, 2026).
 
-    class Permiso {
-        - int idPermiso
-        - String codigoPermiso
-        - String nombre
-        - String descripcion
-    }
+## 📂 Documentación
 
-    class EstadoUsuario {
-        <<enumeration>>
-        ACTIVO
-        INACTIVO
-    }
+Por el momento, este repositorio se encuentra en su etapa de levantamiento de requisitos y diseño. Toda la documentación generada hasta el momento está disponible en la carpeta [`docs/`](docs/):
 
-    class Sesion {
-        - String tokenSesion
-        - DateTime fechaInicio
-        - DateTime fechaExpiracion
-        - bool activa
-        + revocar() void
-        + esValida() bool
-    }
+- **Documento de Inicio** — [`Documento de Inicio — SIAR.pdf`](docs/Documento%20de%20Inicio%20%E2%80%94%20SIAR.pdf): describe el alcance, los objetivos y el contexto general del proyecto.
+- **Arquitectura del sistema** — [`ARQUITECTURA.md`](docs/ARQUITECTURA.md): detalla la arquitectura propuesta y los patrones de diseño aplicados.
+- **Modelo de base de datos** — [`MODELO_ER.md`](docs/MODELO_ER.md): presenta el diagrama entidad-relación del sistema.
+- **Diagrama de clases** — [`Diagrama_de_clases.md`](docs/Diagrama_de_clases.md): representa el diagrama de clases UML del módulo de gestión de usuarios.
+- **Casos de uso** — [`casos de uso/`](docs/casos%20de%20uso/): contiene los documentos con los casos de uso identificados por módulo:
+  - Módulo 1: Gestión de Usuarios
+  - Módulo 2: Gestión de Menú
+  - Módulo 3: Gestión de Mesas
 
-    class SolicitudRecuperacion {
-        - String tokenRecuperacion
-        - DateTime fechaCreacion
-        - DateTime fechaExpiracion
-        - bool usado
-        + esValido() bool
-        + marcarComoUsado() void
-    }
+## 🚧 Estado del proyecto
 
-    class BitacoraAuditoria {
-        - int idBitacora
-        - String tipoEvento
-        - String descripcion
-        - DateTime fechaHora
-        - String ipOrigen
-        + registrarEvento(Usuario usuario, String accion, String detalle) void
-    }
-
-    class ServicioCorreo {
-        <<interface>>
-        + enviarCredenciales(String correo, String usuario, String contrasena) bool
-        + enviarNotificacionCambio(String correo, String mensaje) bool
-        + enviarEnlaceRecuperacion(String correo, String enlace) bool
-    }
-
-    %% Relaciones
-    Usuario "1" --> "1" EstadoUsuario : tiene
-    Usuario "*" --> "1" Rol : pertenece a
-    Rol "*" o-- "*" Permiso : contiene
-    Usuario "1" --> "*" Sesion : posee
-    Usuario "1" --> "*" SolicitudRecuperacion : solicita
-    Usuario "1" --> "*" BitacoraAuditoria : genera
-    Usuario ..> ServicioCorreo : utiliza
-```
+El proyecto se encuentra en fase de análisis y diseño. A medida que avance el desarrollo, este README se actualizará con información sobre la instalación, configuración y uso del sistema.
