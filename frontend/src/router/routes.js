@@ -6,6 +6,12 @@
  */
 const routes = [
   {
+    path: '/cliente',
+    name: 'cliente',
+    component: () => import('@/pages/cliente/ClientePage.vue'),
+    meta: { publica: true },
+  },
+  {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
     children: [
@@ -49,6 +55,12 @@ const routes = [
         component: () => import('@/pages/menu/CategoriasPage.vue'),
         meta: { permiso: 'gestionar_menu' },
       },
+      {
+        path: 'promociones',
+        name: 'promociones',
+        component: () => import('@/pages/menu/PromocionesPage.vue'),
+        meta: { permiso: 'gestionar_menu' },
+      },
 
       // Módulo 3: Gestión de Mesas
       {
@@ -62,6 +74,12 @@ const routes = [
         name: 'reservas',
         component: () => import('@/pages/mesas/ReservasPage.vue'),
         meta: { permisos: ['gestionar_reservas', 'gestionar_mesas'] },
+      },
+      {
+        path: 'pedidos',
+        name: 'pedidos',
+        component: () => import('@/pages/pedidos/PedidosPage.vue'),
+        meta: { permisos: ['tomar_pedidos', 'preparar_pedidos'] },
       },
     ],
   },

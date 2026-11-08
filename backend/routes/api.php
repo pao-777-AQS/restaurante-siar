@@ -3,8 +3,11 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BitacoraController;
 use App\Http\Controllers\Api\CategoriaController;
+use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\MesaController;
 use App\Http\Controllers\Api\PermisoController;
+use App\Http\Controllers\Api\PedidoController;
+use App\Http\Controllers\Api\PromocionController;
 use App\Http\Controllers\Api\ProductoController;
 use App\Http\Controllers\Api\ReservaController;
 use App\Http\Controllers\Api\RolController;
@@ -14,6 +17,30 @@ use Illuminate\Support\Facades\Route;
 /*
 | API REST de SIAR. Todas las rutas quedan bajo el prefijo /api.
 */
+
+// --- Módulo 1: autenticación (CU-05, CU-06) ---------------------------------
+Route::prefix('cliente')->group(function () {
+    Route::get('menu', [ClienteController::class, 'menu']);
+    Route::post('pedidos', [ClienteController::class, 'crearPedido'])->middleware('throttle:10,1');
+    Route::get('pedidos/{codigo}', [ClienteController::class, 'seguimiento'])->middleware('throttle:60,1');
+    Route::post('pedidos/{codigo}/mensajes', [ClienteController::class, 'comentar'])->middleware('throttle:10,1');
+});
+
+Route::middleware(['auth:sanctum', 'permiso:tomar_pedidos,preparar_pedidos'])->prefix('pedidos')->group(function () {
+    Route::get('/', [PedidoController::class, 'index']);
+    Route::patch('{pedido}/estado', [PedidoController::class, 'estado']);
+    Route::patch('{pedido}/mesero', [PedidoController::class, 'asignarMesero'])->middleware('permiso:tomar_pedidos');
+    Route::post('{pedido}/mensajes', [PedidoController::class, 'responder']);
+    Route::patch('mensajes/{mensaje}/moderacion', [PedidoController::class, 'moderarMensaje'])->middleware('permiso:tomar_pedidos,preparar_pedidos');
+});
+
+Route::middleware(['auth:sanctum', 'permiso:gestionar_menu'])->prefix('operacion-cliente')->group(function () {
+    Route::get('configuracion', [PromocionController::class, 'index']);
+    Route::post('adiciones', [PromocionController::class, 'crearAdicion']);
+    Route::patch('adiciones/{adicion}', [PromocionController::class, 'estadoAdicion']);
+    Route::post('promociones', [PromocionController::class, 'crear']);
+    Route::delete('promociones/{promocion}', [PromocionController::class, 'eliminar']);
+});
 
 // --- Módulo 1: autenticación (CU-05, CU-06) ---------------------------------
 Route::prefix('auth')->group(function () {

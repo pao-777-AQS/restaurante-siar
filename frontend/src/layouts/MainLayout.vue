@@ -106,6 +106,7 @@ const menu = [
         permisos: ['gestionar_menu', 'gestionar_disponibilidad'],
       },
       { titulo: 'Categorías', icono: 'category', to: { name: 'categorias' }, permiso: 'gestionar_menu' },
+      { titulo: 'Adiciones y descuentos', icono: 'local_offer', to: { name: 'promociones' }, permiso: 'gestionar_menu' },
     ],
   },
   {
@@ -118,6 +119,7 @@ const menu = [
         permisos: ['consultar_mesas', 'gestionar_mesas', 'gestionar_reservas'],
       },
       { titulo: 'Reservas', icono: 'event', to: { name: 'reservas' }, permisos: ['gestionar_reservas', 'gestionar_mesas'] },
+      { titulo: 'Pedidos', icono: 'receipt_long', to: { name: 'pedidos' }, permisos: ['tomar_pedidos', 'preparar_pedidos'] },
     ],
   },
 ]

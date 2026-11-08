@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Str;
 
 /**
  * Mesa del restaurante (RF12 a RF16). Las transiciones de estado se delegan a
@@ -35,9 +36,18 @@ class Mesa extends Model
 
     protected $table = 'mesas';
 
+    protected static function booted(): void
+    {
+        static::creating(function (Mesa $mesa): void {
+            if (! $mesa->codigo_qr) {
+                $mesa->codigo_qr = (string) Str::uuid();
+            }
+        });
+    }
+
     protected $primaryKey = 'id_mesa';
 
-    protected $fillable = ['numero', 'capacidad', 'ubicacion'];
+    protected $fillable = ['numero', 'capacidad', 'ubicacion', 'codigo_qr'];
 
     protected $attributes = [
         'estado' => 'libre',
