@@ -6,6 +6,8 @@ use Database\Factories\DetallePedidoFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Línea de un pedido (RF18). precio_unitario es el precio del producto al
@@ -31,13 +33,23 @@ class DetallePedido extends Model
 
     public $timestamps = false;
 
-    protected $fillable = ['id_pedido', 'id_producto', 'cantidad', 'precio_unitario', 'observacion'];
+    protected $fillable = [
+        'id_pedido', 'id_producto', 'cantidad', 'precio_unitario', 'observacion',
+        'nombre_producto', 'descuento_porcentaje', 'descuento',
+    ];
+
+    public function getKeyName(): string
+    {
+        return Schema::hasColumn($this->getTable(), 'id_detalle') ? 'id_detalle' : 'id_detalle_pedido';
+    }
 
     protected function casts(): array
     {
         return [
             'cantidad' => 'integer',
             'precio_unitario' => 'decimal:2',
+            'descuento_porcentaje' => 'decimal:2',
+            'descuento' => 'decimal:2',
         ];
     }
 
@@ -49,6 +61,13 @@ class DetallePedido extends Model
     public function producto(): BelongsTo
     {
         return $this->belongsTo(Producto::class, 'id_producto', 'id_producto');
+    }
+
+    public function adiciones(): HasMany
+    {
+        $foreignKey = Schema::hasColumn('detalle_pedido_adiciones', 'id_detalle') ? 'id_detalle' : 'id_detalle_pedido';
+
+        return $this->hasMany(DetallePedidoAdicion::class, $foreignKey, $this->getKeyName());
     }
 
     public function subtotal(): float

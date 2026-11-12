@@ -110,12 +110,32 @@
               @click="cambiarEstado(mesa, accion)"
             />
           </q-card-actions>
+          <q-card-actions v-if="puedeGestionar" class="q-px-sm q-pt-none q-pb-sm">
+            <q-btn flat dense no-caps color="primary" icon="qr_code_2" label="QR del cliente" @click="mostrarQr(mesa)" />
+          </q-card-actions>
         </q-card>
       </div>
     </div>
 
     <MesaFormDialog v-model="formularioAbierto" :mesa="mesaSeleccionada" :ubicaciones="ubicaciones" @guardado="cargar" />
     <ReservaFormDialog v-model="reservaAbierta" :id-mesa-inicial="mesaReserva" @guardado="cargar" />
+    <q-dialog v-model="qrAbierto">
+      <q-card class="qr-dialog">
+        <q-card-section class="row items-center justify-between">
+          <div><div class="text-h6 text-weight-bold">QR · Mesa {{ mesaQr?.numero }}</div><div class="text-caption text-grey-7">El cliente lo escanea para vincular su pedido a esta mesa.</div></div>
+          <q-btn flat round icon="close" v-close-popup />
+        </q-card-section>
+        <q-card-section class="column items-center q-pt-none">
+          <img v-if="imagenQr" :src="imagenQr" alt="Código QR de la mesa" class="qr-image" />
+          <q-spinner v-else color="primary" size="32px" />
+          <div class="text-caption text-grey-7 text-center q-mt-sm qr-url">{{ urlQr }}</div>
+          <div class="row q-gutter-sm q-mt-md">
+            <q-btn outline color="primary" icon="content_copy" label="Copiar enlace" @click="copiarQr" />
+            <q-btn unelevated color="primary" icon="print" label="Imprimir QR" @click="imprimirQr" />
+          </div>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -123,6 +143,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
+import QRCode from 'qrcode'
 import { useAuthStore } from '@/stores/auth'
 import mesasService from '@/services/mesasService'
 import pedidosService from '@/services/pedidosService'
@@ -147,6 +168,10 @@ const formularioAbierto = ref(false)
 const mesaSeleccionada = ref(null)
 const reservaAbierta = ref(false)
 const mesaReserva = ref(null)
+const qrAbierto = ref(false)
+const mesaQr = ref(null)
+const imagenQr = ref('')
+const urlQr = computed(() => mesaQr.value?.codigo_qr ? `${window.location.origin}/cliente?qr=${mesaQr.value.codigo_qr}` : '')
 
 const totalMesas = computed(() => mesas.value.length)
 const mesasVisibles = computed(() =>
@@ -218,6 +243,29 @@ function abrirReserva(mesa) {
   reservaAbierta.value = true
 }
 
+async function mostrarQr(mesa) {
+  mesaQr.value = mesa
+  imagenQr.value = ''
+  qrAbierto.value = true
+  try {
+    imagenQr.value = await QRCode.toDataURL(urlQr.value, { width: 320, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#222222', light: '#ffffff' } })
+  } catch {
+    $q.notify({ type: 'negative', message: 'No se pudo generar el QR de esta mesa.' })
+  }
+}
+
+async function copiarQr() {
+  try { await navigator.clipboard.writeText(urlQr.value); $q.notify({ type: 'positive', message: 'Enlace del QR copiado.' }) }
+  catch { $q.notify({ type: 'warning', message: 'No se pudo copiar el enlace.' }) }
+}
+
+function imprimirQr() {
+  const ventana = window.open('', '_blank', 'width=480,height=600')
+  if (!ventana) { $q.notify({ type: 'warning', message: 'Permite las ventanas emergentes para imprimir el QR.' }); return }
+  ventana.document.write(`<html><head><title>QR Mesa ${mesaQr.value.numero}</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:36px}img{width:300px;height:300px}p{overflow-wrap:anywhere;color:#555}</style></head><body><h1>SIAR · Mesa ${mesaQr.value.numero}</h1><img src="${imagenQr.value}"/><p>Escanea para ver la carta y pedir desde tu mesa.</p></body></html>`)
+  ventana.document.close(); ventana.onload = () => { ventana.focus(); ventana.print() }
+}
+
 function eliminar(mesa) {
   $q.dialog({
     title: 'Dar de baja mesa',
@@ -245,3 +293,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => clearInterval(intervalo))
 </script>
+
+<style scoped>
+.qr-dialog{width:min(440px,94vw);border-radius:14px}.qr-image{width:280px;height:280px;max-width:75vw;object-fit:contain}.qr-url{max-width:360px;overflow-wrap:anywhere}
+</style>

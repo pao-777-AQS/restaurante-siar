@@ -14,6 +14,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('detalle_pedidos')) {
+            return;
+        }
+
         Schema::create('detalle_pedidos', function (Blueprint $table) {
             $table->id('id_detalle');
             $table->foreignId('id_pedido')->constrained('pedidos', 'id_pedido')->cascadeOnDelete();
@@ -28,6 +32,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('detalle_pedidos');
+        // Se conserva el detalle para no borrar pedidos previos.
     }
 };

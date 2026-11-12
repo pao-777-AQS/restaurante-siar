@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Pedido de una mesa (RF17 a RF22).
@@ -44,7 +45,11 @@ class Pedido extends Model
 
     protected $primaryKey = 'id_pedido';
 
-    protected $fillable = ['id_mesa', 'id_usuario', 'observaciones'];
+    protected $fillable = [
+        'id_mesa', 'id_usuario', 'observaciones', 'codigo_seguimiento', 'tipo_pedido',
+        'cliente_nombre', 'cliente_telefono', 'tiempo_estimado_minutos', 'estimado_listo_en',
+        'subtotal', 'descuento', 'propina', 'estado_pago',
+    ];
 
     protected $attributes = ['estado' => 'pendiente'];
 
@@ -59,6 +64,10 @@ class Pedido extends Model
             'fecha_cancelacion' => 'datetime',
             'fecha_creacion' => 'datetime',
             'fecha_modificacion' => 'datetime',
+            'estimado_listo_en' => 'datetime',
+            'subtotal' => 'decimal:2',
+            'descuento' => 'decimal:2',
+            'propina' => 'decimal:2',
         ];
     }
 
@@ -72,14 +81,28 @@ class Pedido extends Model
         return $this->belongsTo(Usuario::class, 'id_usuario', 'id_usuario');
     }
 
+    public function mesero(): BelongsTo
+    {
+        return $this->usuario();
+    }
+
     public function detalles(): HasMany
     {
-        return $this->hasMany(DetallePedido::class, 'id_pedido', 'id_pedido')->orderBy('id_detalle');
+        $primaryKey = Schema::hasColumn('detalle_pedidos', 'id_detalle') ? 'id_detalle' : 'id_detalle_pedido';
+
+        return $this->hasMany(DetallePedido::class, 'id_pedido', 'id_pedido')->orderBy($primaryKey);
+    }
+
+    public function mensajes(): HasMany
+    {
+        return $this->hasMany(MensajePedido::class, 'id_pedido', 'id_pedido');
     }
 
     public function total(): float
     {
-        return round($this->detalles->sum(fn (DetallePedido $detalle) => $detalle->subtotal()), 2);
+        $productos = $this->detalles->sum(fn (DetallePedido $detalle) => $detalle->subtotal() - (float) ($detalle->descuento ?? 0));
+
+        return round($productos + (float) ($this->propina ?? 0), 2);
     }
 
     /**

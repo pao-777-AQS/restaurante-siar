@@ -73,6 +73,11 @@ class Producto extends Model
         return $this->belongsTo(Categoria::class, 'id_categoria', 'id_categoria');
     }
 
+    public function adiciones(): HasMany
+    {
+        return $this->hasMany(AdicionProducto::class, 'id_producto', 'id_producto');
+    }
+
     public function cambiarCategoria(Categoria $categoria): void
     {
         $this->categoria()->associate($categoria)->save();

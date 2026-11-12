@@ -10,10 +10,20 @@
           <q-btn flat round icon="arrow_back" aria-label="Volver" :to="{ name: 'pedidos' }" />
         </div>
         <div class="col">
-          <h1 class="page-titulo">Pedido #{{ pedido.id_pedido }} · Mesa {{ pedido.mesa?.numero }}</h1>
-          <p class="page-subtitulo">Tomado por {{ pedido.mesero }} · {{ formatearFecha(pedido.fecha_creacion) }}</p>
+          <h1 class="page-titulo">Pedido #{{ pedido.id_pedido }} · {{ pedido.tipo_pedido === 'recoger' ? 'Para recoger' : `Mesa ${pedido.mesa?.numero ?? ''}` }}</h1>
+          <p class="page-subtitulo">{{ pedido.cliente_nombre ? `${pedido.cliente_nombre} · ${pedido.cliente_telefono ?? ''} · Mesero: ${pedido.mesero ?? 'Sin asignar'}` : `Tomado por ${pedido.mesero ?? 'Sin asignar'}` }} · {{ formatearFecha(pedido.fecha_creacion) }}</p>
         </div>
         <div class="col-12 col-sm-auto">
+          <q-btn
+            v-if="puedeTomar && !pedido.mesero && pedido.cliente_nombre"
+            class="q-mr-sm"
+            outline
+            no-caps
+            color="primary"
+            icon="person_add"
+            label="Asignarme"
+            @click="asignarme"
+          />
           <q-badge :color="colorEstado(pedido)" class="text-body2 q-pa-sm">
             <q-icon :name="ESTADOS_PEDIDO[pedido.estado].icono" class="q-mr-xs" />
             {{ textoEstado(pedido) }}
@@ -53,6 +63,7 @@
                 </q-item-section>
                 <q-item-section>
                   <q-item-label>{{ linea.producto }}</q-item-label>
+                  <q-item-label v-if="linea.adiciones?.length" caption>Adiciones: {{ linea.adiciones.map((adicion) => adicion.nombre).join(', ') }}</q-item-label>
                   <q-item-label caption>
                     {{ formatearPrecio(linea.precio_unitario) }} c/u
                     <span v-if="linea.observacion" class="text-warning text-weight-medium"> · {{ linea.observacion }}</span>
@@ -139,7 +150,7 @@
                 no-caps
                 color="info"
                 icon="room_service"
-                label="Entregar en la mesa"
+                :label="pedido.tipo_pedido === 'recoger' ? 'Marcar como recogido' : 'Entregar en la mesa'"
                 :loading="accion === 'entregar'"
                 @click="ejecutar('entregar', () => pedidosService.entregar(pedido.id_pedido))"
               />
@@ -201,6 +212,29 @@
           </q-card>
         </div>
       </div>
+
+      <q-card flat bordered class="q-mt-md">
+        <q-card-section>
+          <div class="text-subtitle1 text-weight-medium">Comentarios del cliente</div>
+          <div v-if="!pedido.mensajes?.length" class="text-caption text-grey-7 q-mt-sm">Todavía no hay comentarios.</div>
+          <div v-for="mensaje in pedido.mensajes || []" :key="mensaje.id_mensaje" class="q-mt-sm q-pa-sm bg-grey-2 rounded-borders">
+            <div class="row items-center q-gutter-sm">
+              <strong>{{ mensaje.autor === 'cliente' ? 'Cliente' : 'Restaurante' }}</strong>
+              <q-badge :color="mensaje.visibilidad === 'publico' ? 'orange' : 'blue-grey'" :label="mensaje.visibilidad === 'publico' ? 'Recomendación pública' : 'Privado'" />
+              <q-badge v-if="mensaje.visibilidad === 'publico'" color="grey-7" :label="mensaje.estado_publicacion" />
+            </div>
+            <div class="q-mt-xs">{{ mensaje.mensaje }}</div>
+            <div v-if="mensaje.visibilidad === 'publico' && mensaje.estado_publicacion === 'pendiente' && puedeTomar" class="row q-gutter-xs q-mt-xs">
+              <q-btn dense flat color="positive" label="Publicar" icon="check" @click="moderarMensaje(mensaje.id_mensaje, 'publicado')" />
+              <q-btn dense flat color="negative" label="Ocultar" icon="visibility_off" @click="moderarMensaje(mensaje.id_mensaje, 'oculto')" />
+            </div>
+          </div>
+          <div v-if="puedeTomar || puedePreparar" class="row q-gutter-sm q-mt-md">
+            <q-input v-model="respuestaCliente" class="col" dense outlined label="Responder de forma privada" maxlength="1000" @keyup.enter="responderCliente" />
+            <q-btn color="primary" icon="send" label="Enviar" :disable="!respuestaCliente.trim()" @click="responderCliente" />
+          </div>
+        </q-card-section>
+      </q-card>
     </template>
   </q-page>
 </template>
@@ -209,6 +243,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
+import { api } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import pedidosService from '@/services/pedidosService'
 import menuService from '@/services/menuService'
@@ -230,6 +265,7 @@ const accion = ref(null)
 const observaciones = ref('')
 const carta = ref([])
 const busqueda = ref('')
+const respuestaCliente = ref('')
 
 const puedeCancelar = computed(() => puedeTomar.value && pedido.value?.acciones.includes('cancelado'))
 
@@ -326,6 +362,36 @@ async function ejecutar(nombre, llamada) {
   accion.value = nombre
   await conPedido(llamada, true)
   accion.value = null
+}
+
+async function responderCliente() {
+  const mensaje = respuestaCliente.value.trim()
+  if (!mensaje || !pedido.value) return
+  try {
+    await api.post(`/pedidos/${pedido.value.id_pedido}/mensajes`, { mensaje })
+    respuestaCliente.value = ''
+    await cargar()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: mensajeError(error) })
+  }
+}
+
+async function asignarme() {
+  try {
+    await api.patch(`/pedidos/${pedido.value.id_pedido}/mesero`)
+    await cargar()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: mensajeError(error) })
+  }
+}
+
+async function moderarMensaje(id, estado_publicacion) {
+  try {
+    await api.patch(`/pedidos/mensajes/${id}/moderacion`, { estado_publicacion })
+    await cargar()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: mensajeError(error) })
+  }
 }
 
 /** RF20: en preparación se pide el motivo (el backend lo exige). */

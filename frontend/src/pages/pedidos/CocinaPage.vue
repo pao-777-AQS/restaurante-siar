@@ -26,9 +26,9 @@
           <q-card-section class="q-pb-sm">
             <div class="row items-center no-wrap">
               <div class="col">
-                <div class="text-h6">Mesa {{ pedido.mesa?.numero }}</div>
+                <div class="text-h6">{{ pedido.tipo_pedido === 'recoger' ? 'Para recoger' : `Mesa ${pedido.mesa?.numero ?? ''}` }}</div>
                 <div class="text-caption text-grey-7">
-                  #{{ pedido.id_pedido }} · {{ pedido.mesero }} · {{ haceCuanto(columna.desde(pedido)) }}
+                  #{{ pedido.id_pedido }} · {{ pedido.cliente_nombre || pedido.mesero || 'Sin mesero' }} · {{ haceCuanto(columna.desde(pedido)) }}
                 </div>
               </div>
             </div>
@@ -38,6 +38,7 @@
               <q-item-section side class="text-weight-bold text-body1">{{ linea.cantidad }}×</q-item-section>
               <q-item-section>
                 <q-item-label class="text-body1">{{ linea.producto }}</q-item-label>
+                <q-item-label v-if="linea.adiciones?.length" caption>Adiciones: {{ linea.adiciones.map((adicion) => adicion.nombre).join(', ') }}</q-item-label>
                 <q-item-label v-if="linea.observacion" caption class="text-warning text-weight-medium">
                   {{ linea.observacion }}
                 </q-item-label>

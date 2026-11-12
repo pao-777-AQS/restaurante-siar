@@ -6,6 +6,12 @@
  */
 const routes = [
   {
+    path: '/cliente',
+    name: 'cliente',
+    component: () => import('@/pages/cliente/ClientePage.vue'),
+    meta: { publica: true },
+  },
+  {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
     children: [
@@ -47,6 +53,12 @@ const routes = [
         path: 'categorias',
         name: 'categorias',
         component: () => import('@/pages/menu/CategoriasPage.vue'),
+        meta: { permiso: 'gestionar_menu' },
+      },
+      {
+        path: 'promociones',
+        name: 'promociones',
+        component: () => import('@/pages/menu/PromocionesPage.vue'),
         meta: { permiso: 'gestionar_menu' },
       },
 

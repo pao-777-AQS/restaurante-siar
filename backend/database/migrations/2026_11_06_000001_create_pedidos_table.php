@@ -14,10 +14,14 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('pedidos')) {
+            return;
+        }
+
         Schema::create('pedidos', function (Blueprint $table) {
             $table->id('id_pedido');
-            $table->foreignId('id_mesa')->constrained('mesas', 'id_mesa')->restrictOnDelete();
-            $table->foreignId('id_usuario')->constrained('usuarios', 'id_usuario')->restrictOnDelete();
+            $table->foreignId('id_mesa')->nullable()->constrained('mesas', 'id_mesa')->restrictOnDelete();
+            $table->foreignId('id_usuario')->nullable()->constrained('usuarios', 'id_usuario')->restrictOnDelete();
             $table->enum('estado', ['pendiente', 'en_preparacion', 'listo', 'entregado', 'facturado', 'cancelado'])
                 ->default('pendiente');
             $table->string('observaciones', 255)->nullable();
@@ -38,6 +42,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('pedidos');
+        // Se conserva el historial de pedidos al revertir una migración.
     }
 };

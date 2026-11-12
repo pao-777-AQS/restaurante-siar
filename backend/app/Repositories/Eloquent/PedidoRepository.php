@@ -12,7 +12,7 @@ use Illuminate\Support\Collection;
 
 class PedidoRepository implements PedidoRepositoryInterface
 {
-    private const RELACIONES = ['mesa', 'usuario:id_usuario,nombres', 'detalles.producto'];
+    private const RELACIONES = ['mesa', 'usuario:id_usuario,nombres', 'detalles.producto', 'detalles.adiciones', 'mensajes'];
 
     public function buscar(array $filtros, int $porPagina = 20): LengthAwarePaginator
     {

@@ -1,0 +1,34 @@
+<template>
+  <q-page padding>
+    <div class="q-mb-lg"><h1 class="page-titulo">Adiciones y descuentos</h1><p class="page-subtitulo">Personaliza los platos y programa promociones semanales para la carta del cliente.</p></div>
+    <q-banner v-if="error" class="bg-red-1 text-negative q-mb-md" rounded>{{ error }}</q-banner>
+    <div class="row q-col-gutter-md">
+      <div class="col-12 col-lg-5"><q-card flat bordered class="config-card"><q-card-section><div class="text-h6 text-weight-bold">Adiciones por producto</div><div class="text-caption text-grey-7">El precio se suma al total cuando el cliente la elige.</div></q-card-section><q-separator/><q-card-section>
+        <q-select v-model="adicion.id_producto" outlined :options="productos" option-label="nombre" option-value="id_producto" emit-value map-options label="Producto" class="q-mb-sm"/><q-input v-model="adicion.nombre" outlined label="Nombre de la adición" class="q-mb-sm"/><q-input v-model.number="adicion.precio" outlined type="number" min="0" label="Precio adicional" prefix="$"/><q-btn class="full-width q-mt-md" unelevated color="primary" label="Agregar opción" icon="add" :loading="guardandoAdicion" @click="crearAdicion"/>
+      </q-card-section><q-list separator><template v-for="producto in productos" :key="producto.id_producto"><q-item v-for="a in producto.adiciones" :key="a.id_adicion"><q-item-section><q-item-label>{{ a.nombre }} · {{ producto.nombre }}</q-item-label><q-item-label caption>{{ dinero(a.precio) }}</q-item-label></q-item-section><q-item-section side><q-toggle :model-value="a.activa" color="positive" @update:model-value="(v) => cambiarAdicion(a, v)"/></q-item-section></q-item></template></q-list></q-card></div>
+      <div class="col-12 col-lg-7"><q-card flat bordered class="config-card"><q-card-section><div class="text-h6 text-weight-bold">Descuento del día</div><div class="text-caption text-grey-7">Se aplicará automáticamente al precio de los platos elegidos.</div></q-card-section><q-separator/><q-card-section>
+        <q-form @submit.prevent="crearPromocion"><div class="row q-col-gutter-sm"><div class="col-12 col-sm-7"><q-input v-model="promo.nombre" outlined label="Nombre de la promoción" required maxlength="120"/></div><div class="col-12 col-sm-5"><q-select v-model="promo.dia_semana" outlined :options="dias" emit-value map-options label="Día de la semana"/></div><div class="col-12 col-sm-5"><q-input v-model.number="promo.descuento_porcentaje" outlined type="number" min="0.01" max="15" step="0.01" suffix="%" label="Descuento (máximo 15 %)" required/></div><div class="col-12 col-sm-7"><q-select v-model="promo.productos" outlined multiple use-chips :options="productos" option-label="nombre" option-value="id_producto" emit-value map-options label="Productos incluidos"/></div><div class="col-12 col-sm-6"><q-input v-model="promo.fecha_inicio" outlined type="date" label="Válida desde (opcional)"/></div><div class="col-12 col-sm-6"><q-input v-model="promo.fecha_fin" outlined type="date" label="Válida hasta (opcional)"/></div></div><q-btn class="q-mt-md" unelevated color="primary" icon="local_offer" label="Crear descuento" type="submit" :loading="guardandoPromo"/></q-form>
+      </q-card-section></q-card>
+      <q-card flat bordered class="config-card q-mt-md"><q-card-section><div class="text-h6 text-weight-bold">Promociones configuradas</div></q-card-section><q-list v-if="promociones.length" separator><q-item v-for="p in promociones" :key="p.id_promocion"><q-item-section avatar><q-avatar color="orange-1" text-color="deep-orange">{{ p.descuento_porcentaje }}%</q-avatar></q-item-section><q-item-section><q-item-label>{{ p.nombre }} · {{ dias.find((d) => d.value === p.dia_semana)?.label }}</q-item-label><q-item-label caption>{{ p.productos.map((x) => x.nombre).join(', ') }}</q-item-label></q-item-section><q-item-section side><q-btn flat round color="negative" icon="delete_outline" @click="eliminarPromo(p)"/></q-item-section></q-item></q-list><q-card-section v-else class="text-grey-7">Aún no hay descuentos programados.</q-card-section></q-card></div>
+    </div>
+  </q-page>
+</template>
+
+<script setup>
+import { onMounted, reactive, ref } from 'vue'
+import { Notify } from 'quasar'
+import { api } from '@/services/api'
+const productos = ref([]); const promociones = ref([]); const error = ref(''); const guardandoAdicion = ref(false); const guardandoPromo = ref(false)
+const dias = [{ label: 'Lunes', value: 1 }, { label: 'Martes', value: 2 }, { label: 'Miércoles', value: 3 }, { label: 'Jueves', value: 4 }, { label: 'Viernes', value: 5 }, { label: 'Sábado', value: 6 }, { label: 'Domingo', value: 7 }]
+const adicion = reactive({ id_producto: null, nombre: '', precio: 0 })
+const promo = reactive({ nombre: '', dia_semana: 1, descuento_porcentaje: 10, productos: [], fecha_inicio: '', fecha_fin: '' })
+function dinero(n) { return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(n || 0)) }
+async function cargar() { try { const { data } = await api.get('/operacion-cliente/configuracion'); productos.value = data.productos; promociones.value = data.promociones } catch (e) { error.value = e.response?.data?.message || 'No pudimos cargar la configuración. Se requiere permiso para gestionar el menú.' } }
+async function crearAdicion() { if (!adicion.id_producto || !adicion.nombre.trim()) return; guardandoAdicion.value = true; try { await api.post('/operacion-cliente/adiciones', adicion); adicion.nombre = ''; adicion.precio = 0; await cargar(); Notify.create({ type: 'positive', message: 'Adición creada.' }) } catch (e) { Notify.create({ type: 'negative', message: e.response?.data?.message || 'No se pudo crear la adición.' }) } finally { guardandoAdicion.value = false } }
+async function cambiarAdicion(a, activa) { try { await api.patch(`/operacion-cliente/adiciones/${a.id_adicion}`, { activa }); a.activa = activa } catch { Notify.create({ type: 'negative', message: 'No se pudo actualizar la adición.' }) } }
+async function crearPromocion() { if (!promo.productos.length) { Notify.create({ type: 'warning', message: 'Selecciona uno o más productos.' }); return } guardandoPromo.value = true; try { await api.post('/operacion-cliente/promociones', promo); promo.nombre = ''; promo.productos = []; await cargar(); Notify.create({ type: 'positive', message: 'Descuento programado.' }) } catch (e) { Notify.create({ type: 'negative', message: e.response?.data?.message || 'No se pudo crear el descuento.' }) } finally { guardandoPromo.value = false } }
+async function eliminarPromo(p) { try { await api.delete(`/operacion-cliente/promociones/${p.id_promocion}`); await cargar() } catch { Notify.create({ type: 'negative', message: 'No se pudo eliminar.' }) } }
+onMounted(cargar)
+</script>
+
+<style scoped>.config-card{border-radius:12px}</style>

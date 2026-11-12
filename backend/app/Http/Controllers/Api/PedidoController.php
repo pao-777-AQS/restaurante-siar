@@ -11,6 +11,7 @@ use App\Http\Requests\Pedido\CrearPedidoRequest;
 use App\Http\Requests\Pedido\ModificarProductoRequest;
 use App\Http\Resources\PedidoResource;
 use App\Models\DetallePedido;
+use App\Models\MensajePedido;
 use App\Models\Pedido;
 use App\Services\PedidoService;
 use Illuminate\Http\JsonResponse;
@@ -51,7 +52,7 @@ class PedidoController extends Controller
 
     public function show(Pedido $pedido): PedidoResource
     {
-        return new PedidoResource($pedido->load(['mesa', 'usuario:id_usuario,nombres', 'detalles.producto']));
+        return new PedidoResource($pedido->load(['mesa', 'usuario:id_usuario,nombres', 'detalles.producto', 'detalles.adiciones', 'mensajes']));
     }
 
     /** RF17 Crear pedido (con o sin productos iniciales). */
@@ -129,6 +130,46 @@ class PedidoController extends Controller
             $this->pedidos->cancelar($pedido, $motivo === '' ? null : $motivo),
             "Pedido #{$pedido->id_pedido} cancelado.",
         );
+    }
+
+    public function asignarMesero(Request $request, Pedido $pedido): JsonResponse
+    {
+        $mesero = $request->user();
+        if (! $mesero->estaActivo() || ! $mesero->tienePermiso('tomar_pedidos')) {
+            return response()->json(['message' => 'El usuario debe estar activo y tener permiso para tomar pedidos.'], 422);
+        }
+
+        $pedido->forceFill(['id_usuario' => $mesero->id_usuario])->save();
+
+        return response()->json(['message' => 'Mesero asignado.', 'data' => ['nombres' => $mesero->nombres]]);
+    }
+
+    public function responder(Request $request, Pedido $pedido): JsonResponse
+    {
+        $datos = $request->validate(['mensaje' => ['required', 'string', 'min:2', 'max:1000']]);
+        $mensaje = MensajePedido::create([
+            'id_pedido' => $pedido->id_pedido,
+            'id_usuario' => $request->user()->id_usuario,
+            'autor' => 'personal',
+            'clasificacion' => 'recomendacion',
+            'visibilidad' => 'privado',
+            'estado_publicacion' => 'no_aplica',
+            'mensaje' => $datos['mensaje'],
+        ]);
+
+        return response()->json(['data' => ['id_mensaje' => $mensaje->id_mensaje, 'mensaje' => $mensaje->mensaje]], 201);
+    }
+
+    public function moderarMensaje(Request $request, MensajePedido $mensaje): JsonResponse
+    {
+        $datos = $request->validate(['estado_publicacion' => ['required', Rule::in(['publicado', 'oculto'])]]);
+        if ($mensaje->visibilidad !== 'publico') {
+            return response()->json(['message' => 'Solo se moderan recomendaciones públicas.'], 422);
+        }
+
+        $mensaje->update(['estado_publicacion' => $datos['estado_publicacion']]);
+
+        return response()->json(['message' => 'Recomendación moderada.']);
     }
 
     private function respuesta(Pedido $pedido, string $mensaje, int $codigo = 200): JsonResponse

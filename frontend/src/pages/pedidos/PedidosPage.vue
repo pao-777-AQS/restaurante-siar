@@ -41,12 +41,12 @@
             <div class="row items-center no-wrap">
               <div class="col">
                 <div class="text-caption text-grey-7">Pedido #{{ pedido.id_pedido }}</div>
-                <div class="text-h6">Mesa {{ pedido.mesa?.numero }}</div>
+                <div class="text-h6">{{ pedido.tipo_pedido === 'recoger' ? 'Para recoger' : `Mesa ${pedido.mesa?.numero ?? ''}` }}</div>
               </div>
               <q-badge :color="colorEstado(pedido)" :label="textoEstado(pedido)" />
             </div>
             <div class="text-caption text-grey-7 q-mt-xs">
-              {{ pedido.mesero }} · {{ haceCuanto(pedido.fecha_creacion) }}
+              {{ pedido.cliente_nombre ? `${pedido.cliente_nombre} · ${pedido.cliente_telefono ?? ''}` : (pedido.mesero || 'Sin mesero') }} · {{ haceCuanto(pedido.fecha_creacion) }}
             </div>
             <q-list dense class="q-mt-sm">
               <q-item v-for="linea in pedido.detalles.slice(0, 4)" :key="linea.id_detalle" class="q-px-none" style="min-height: 24px">

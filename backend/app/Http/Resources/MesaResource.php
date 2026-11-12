@@ -19,6 +19,7 @@ class MesaResource extends JsonResource
             'estado' => $this->estado->value,
             'estado_etiqueta' => $this->estado->etiqueta(),
             'activo' => $this->activo,
+            'codigo_qr' => $this->codigo_qr,
             // Lo que permite el estado actual (patrón State).
             'acciones' => $this->activo ? $this->accionesPermitidas() : [],
             'proxima_reserva' => $this->whenLoaded('proximaReserva', fn () => $this->proximaReserva ? [

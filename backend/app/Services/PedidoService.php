@@ -147,8 +147,8 @@ class PedidoService
         }
 
         $agotados = $pedido->detalles
-            ->reject(fn (DetallePedido $detalle) => $detalle->producto->estaEnMenu())
-            ->map(fn (DetallePedido $detalle) => $detalle->producto->nombre)
+            ->reject(fn (DetallePedido $detalle) => ! $detalle->producto?->estaEnMenu())
+            ->map(fn (DetallePedido $detalle) => $detalle->producto?->nombre ?? 'Producto eliminado')
             ->unique()
             ->values();
 
@@ -168,7 +168,9 @@ class PedidoService
 
         EventoAuditable::dispatch(
             TipoEvento::PEDIDO_ENVIADO_COCINA,
-            "El pedido #{$pedido->id_pedido} (mesa {$pedido->mesa->numero}) se envió a cocina.",
+            $pedido->mesa
+                ? "El pedido #{$pedido->id_pedido} (mesa {$pedido->mesa->numero}) se envió a cocina."
+                : "El pedido #{$pedido->id_pedido} para recoger se envió a cocina.",
         );
 
         return $this->pedidos->cargarDetalle($pedido);
@@ -303,8 +305,9 @@ class PedidoService
     {
         $pedido->loadMissing('mesa');
         $fin = $conPunto ? '.' : '';
+        $lugar = $pedido->mesa ? "mesa {$pedido->mesa->numero}" : 'para recoger';
 
-        EventoAuditable::dispatch($tipo, "El pedido #{$pedido->id_pedido} (mesa {$pedido->mesa->numero}) {$texto}{$fin}");
+        EventoAuditable::dispatch($tipo, "El pedido #{$pedido->id_pedido} ({$lugar}) {$texto}{$fin}");
 
         return $this->pedidos->cargarDetalle($pedido);
     }

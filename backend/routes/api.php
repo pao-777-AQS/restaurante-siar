@@ -3,10 +3,12 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BitacoraController;
 use App\Http\Controllers\Api\CategoriaController;
+use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\InsumoController;
 use App\Http\Controllers\Api\MesaController;
 use App\Http\Controllers\Api\PedidoController;
 use App\Http\Controllers\Api\PermisoController;
+use App\Http\Controllers\Api\PromocionController;
 use App\Http\Controllers\Api\ProductoController;
 use App\Http\Controllers\Api\RecetaController;
 use App\Http\Controllers\Api\ReservaController;
@@ -17,6 +19,22 @@ use Illuminate\Support\Facades\Route;
 /*
 | API REST de SIAR. Todas las rutas quedan bajo el prefijo /api.
 */
+
+// --- Módulo 1: autenticación (CU-05, CU-06) ---------------------------------
+Route::prefix('cliente')->group(function () {
+    Route::get('menu', [ClienteController::class, 'menu']);
+    Route::post('pedidos', [ClienteController::class, 'crearPedido'])->middleware('throttle:10,1');
+    Route::get('pedidos/{codigo}', [ClienteController::class, 'seguimiento'])->middleware('throttle:60,1');
+    Route::post('pedidos/{codigo}/mensajes', [ClienteController::class, 'comentar'])->middleware('throttle:10,1');
+});
+
+Route::middleware(['auth:sanctum', 'permiso:gestionar_menu'])->prefix('operacion-cliente')->group(function () {
+    Route::get('configuracion', [PromocionController::class, 'index']);
+    Route::post('adiciones', [PromocionController::class, 'crearAdicion']);
+    Route::patch('adiciones/{adicion}', [PromocionController::class, 'estadoAdicion']);
+    Route::post('promociones', [PromocionController::class, 'crear']);
+    Route::delete('promociones/{promocion}', [PromocionController::class, 'eliminar']);
+});
 
 // --- Módulo 1: autenticación (CU-05, CU-06) ---------------------------------
 Route::prefix('auth')->group(function () {
@@ -123,6 +141,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('pedidos/{pedido}/enviar-cocina', [PedidoController::class, 'enviarACocina']);
         Route::patch('pedidos/{pedido}/cancelar', [PedidoController::class, 'cancelar']);
         Route::patch('pedidos/{pedido}/entregar', [PedidoController::class, 'entregar']);
+        Route::patch('pedidos/{pedido}/mesero', [PedidoController::class, 'asignarMesero']);
+    });
+
+    Route::middleware('permiso:tomar_pedidos,preparar_pedidos')->group(function () {
+        Route::post('pedidos/{pedido}/mensajes', [PedidoController::class, 'responder']);
+        Route::patch('pedidos/mensajes/{mensaje}/moderacion', [PedidoController::class, 'moderarMensaje']);
     });
 
     // Cocina: el cocinero inicia la preparación y marca el pedido como listo.

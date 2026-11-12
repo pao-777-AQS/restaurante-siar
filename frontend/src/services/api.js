@@ -9,7 +9,9 @@ import axios from 'axios'
  */
 const urlApi = import.meta.env.PROD
   ? import.meta.env.QCLI_API_URL_PRODUCCION || `${import.meta.env.BASE_URL}backend/api`
-  : import.meta.env.QCLI_API_URL || 'http://localhost:8000/api'
+  // In LAN testing, the phone must call the API through the same host/IP
+  // that served the frontend; "localhost" on the phone would mean the phone.
+  : import.meta.env.QCLI_API_URL || `http://${window.location.hostname || 'localhost'}:8000/api`
 
 /**
  * Cliente HTTP de la API. Los interceptores (token y sesión vencida) se
