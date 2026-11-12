@@ -4,11 +4,13 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BitacoraController;
 use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
+use App\Http\Controllers\Api\InsumoController;
 use App\Http\Controllers\Api\MesaController;
-use App\Http\Controllers\Api\PermisoController;
 use App\Http\Controllers\Api\PedidoController;
+use App\Http\Controllers\Api\PermisoController;
 use App\Http\Controllers\Api\PromocionController;
 use App\Http\Controllers\Api\ProductoController;
+use App\Http\Controllers\Api\RecetaController;
 use App\Http\Controllers\Api\ReservaController;
 use App\Http\Controllers\Api\RolController;
 use App\Http\Controllers\Api\UsuarioController;
@@ -24,14 +26,6 @@ Route::prefix('cliente')->group(function () {
     Route::post('pedidos', [ClienteController::class, 'crearPedido'])->middleware('throttle:10,1');
     Route::get('pedidos/{codigo}', [ClienteController::class, 'seguimiento'])->middleware('throttle:60,1');
     Route::post('pedidos/{codigo}/mensajes', [ClienteController::class, 'comentar'])->middleware('throttle:10,1');
-});
-
-Route::middleware(['auth:sanctum', 'permiso:tomar_pedidos,preparar_pedidos'])->prefix('pedidos')->group(function () {
-    Route::get('/', [PedidoController::class, 'index']);
-    Route::patch('{pedido}/estado', [PedidoController::class, 'estado']);
-    Route::patch('{pedido}/mesero', [PedidoController::class, 'asignarMesero'])->middleware('permiso:tomar_pedidos');
-    Route::post('{pedido}/mensajes', [PedidoController::class, 'responder']);
-    Route::patch('mensajes/{mensaje}/moderacion', [PedidoController::class, 'moderarMensaje'])->middleware('permiso:tomar_pedidos,preparar_pedidos');
 });
 
 Route::middleware(['auth:sanctum', 'permiso:gestionar_menu'])->prefix('operacion-cliente')->group(function () {
@@ -124,4 +118,63 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('mesas/{mesa}/mantenimiento', [MesaController::class, 'mantenimiento']);
         Route::patch('mesas/{mesa}/habilitar', [MesaController::class, 'habilitar']);
     });
+});
+
+// --- Módulo 4: pedidos (RF17 a RF22) -----------------------------------------
+Route::middleware('auth:sanctum')->group(function () {
+    // RF22: cola de cocina (cocinero y administrador). Va antes de pedidos/{pedido}.
+    Route::get('pedidos/cocina', [PedidoController::class, 'cocina'])->middleware('permiso:preparar_pedidos');
+
+    // RF22: consultar pedidos (meseros, cocina y caja).
+    Route::middleware('permiso:tomar_pedidos,preparar_pedidos,facturar')->group(function () {
+        Route::get('pedidos', [PedidoController::class, 'index']);
+        Route::get('pedidos/{pedido}', [PedidoController::class, 'show']);
+    });
+
+    // RF17 a RF21: el mesero toma, modifica, envía, cancela y entrega.
+    Route::middleware('permiso:tomar_pedidos')->group(function () {
+        Route::post('pedidos', [PedidoController::class, 'store']);
+        Route::put('pedidos/{pedido}', [PedidoController::class, 'update']);
+        Route::post('pedidos/{pedido}/productos', [PedidoController::class, 'agregarProducto']);
+        Route::put('pedidos/{pedido}/productos/{detalle}', [PedidoController::class, 'modificarProducto'])->scopeBindings();
+        Route::delete('pedidos/{pedido}/productos/{detalle}', [PedidoController::class, 'quitarProducto'])->scopeBindings();
+        Route::patch('pedidos/{pedido}/enviar-cocina', [PedidoController::class, 'enviarACocina']);
+        Route::patch('pedidos/{pedido}/cancelar', [PedidoController::class, 'cancelar']);
+        Route::patch('pedidos/{pedido}/entregar', [PedidoController::class, 'entregar']);
+        Route::patch('pedidos/{pedido}/mesero', [PedidoController::class, 'asignarMesero']);
+    });
+
+    Route::middleware('permiso:tomar_pedidos,preparar_pedidos')->group(function () {
+        Route::post('pedidos/{pedido}/mensajes', [PedidoController::class, 'responder']);
+        Route::patch('pedidos/mensajes/{mensaje}/moderacion', [PedidoController::class, 'moderarMensaje']);
+    });
+
+    // Cocina: el cocinero inicia la preparación y marca el pedido como listo.
+    Route::middleware('permiso:preparar_pedidos')->group(function () {
+        Route::patch('pedidos/{pedido}/preparar', [PedidoController::class, 'preparar']);
+        Route::patch('pedidos/{pedido}/listo', [PedidoController::class, 'listo']);
+    });
+});
+
+// --- Módulo 5: inventario (RF23 a RF27, RF38 a RF40) --------------------------
+Route::middleware(['auth:sanctum', 'permiso:gestionar_inventario'])->group(function () {
+    // Va antes de insumos/{insumo} para que "alertas" no se tome como un id.
+    Route::get('insumos/alertas', [InsumoController::class, 'alertas']);
+
+    Route::get('insumos', [InsumoController::class, 'index']);
+    Route::post('insumos', [InsumoController::class, 'store']);
+    Route::get('insumos/{insumo}', [InsumoController::class, 'show']);
+    Route::put('insumos/{insumo}', [InsumoController::class, 'update']);
+    Route::delete('insumos/{insumo}', [InsumoController::class, 'destroy']);
+
+    Route::post('insumos/{insumo}/entradas', [InsumoController::class, 'entrada'])->name('insumos.entradas');
+    Route::post('insumos/{insumo}/mermas', [InsumoController::class, 'merma'])->name('insumos.mermas');
+    Route::post('insumos/{insumo}/ajustes', [InsumoController::class, 'ajuste'])->name('insumos.ajustes');
+    Route::get('insumos/{insumo}/movimientos', [InsumoController::class, 'movimientos']);
+});
+
+// RF38: recetas (inventario o administración del menú).
+Route::middleware(['auth:sanctum', 'permiso:gestionar_inventario,gestionar_menu'])->group(function () {
+    Route::get('productos/{producto}/receta', [RecetaController::class, 'show']);
+    Route::put('productos/{producto}/receta', [RecetaController::class, 'update']);
 });

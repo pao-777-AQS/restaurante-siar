@@ -2,67 +2,178 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\DTOs\LineaPedidoDTO;
+use App\DTOs\PedidoDTO;
+use App\Enums\EstadoPedido;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Pedido\AgregarProductoRequest;
+use App\Http\Requests\Pedido\CrearPedidoRequest;
+use App\Http\Requests\Pedido\ModificarProductoRequest;
+use App\Http\Resources\PedidoResource;
+use App\Models\DetallePedido;
 use App\Models\MensajePedido;
 use App\Models\Pedido;
-use App\Models\Usuario;
+use App\Services\PedidoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Validation\Rule;
 
+/**
+ * RF17 a RF22 (Módulo 4: Pedidos).
+ */
 class PedidoController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function __construct(private readonly PedidoService $pedidos) {}
+
+    /** RF22 Consultar estado. */
+    public function index(Request $request): AnonymousResourceCollection
     {
-        $filtros = $request->validate(['estado' => ['nullable', Rule::in(['pendiente', 'preparando', 'listo', 'entregado', 'cancelado'])]]);
-        $pedidos = Pedido::with(['mesa', 'mesero', 'detalles.adiciones', 'mensajes'])->when($filtros['estado'] ?? null, fn ($q, $estado) => $q->where('estado', $estado))
-            ->whereNotIn('estado', ['entregado', 'cancelado'])->latest()->get();
-        return response()->json(['data' => $pedidos->map(fn ($p) => [
-            'id_pedido' => $p->id_pedido, 'codigo_seguimiento' => $p->codigo_seguimiento, 'tipo_pedido' => $p->tipo_pedido,
-            'mesa' => $p->mesa?->numero, 'cliente_nombre' => $p->cliente_nombre, 'cliente_telefono' => $p->cliente_telefono,
-            'estado' => $p->estado, 'tiempo_estimado_minutos' => $p->tiempo_estimado_minutos, 'estimado_listo_en' => $p->estimado_listo_en,
-            'mesero' => $p->mesero ? ['id_usuario' => $p->mesero->id_usuario, 'nombres' => $p->mesero->nombres] : null,
-            'total' => (float) $p->total, 'propina' => (float) $p->propina,
-            'items' => $p->detalles->map(fn ($d) => ['nombre' => $d->nombre_producto, 'cantidad' => $d->cantidad, 'nota' => $d->nota, 'subtotal' => (float) $d->subtotal,
-                'adiciones' => $d->adiciones->map(fn ($a) => $a->nombre)]),
-            'mensajes' => $p->mensajes->map(fn ($m) => ['id_mensaje' => $m->id_mensaje, 'autor' => $m->autor, 'mensaje' => $m->mensaje,
-                'visibilidad' => $m->visibilidad, 'estado_publicacion' => $m->estado_publicacion, 'created_at' => $m->created_at]),
-        ])]);
+        $filtros = $request->validate([
+            'estado' => ['nullable', Rule::in(['abiertos', ...array_map(fn ($e) => $e->value, EstadoPedido::cases())])],
+            'id_mesa' => ['nullable', 'integer'],
+            'fecha' => ['nullable', 'date_format:Y-m-d'],
+            'mios' => ['nullable', 'boolean'],
+            'por_pagina' => ['nullable', 'integer', 'min:5', 'max:100'],
+        ]);
+
+        if ($request->boolean('mios')) {
+            $filtros['id_usuario'] = $request->user()->id_usuario;
+        }
+
+        return PedidoResource::collection($this->pedidos->listar($filtros, (int) ($filtros['por_pagina'] ?? 20)));
     }
 
-    public function estado(Request $request, Pedido $pedido): JsonResponse
+    /** RF22: cola de la cocina. */
+    public function cocina(): AnonymousResourceCollection
     {
-        $data = $request->validate(['estado' => ['required', Rule::in(['pendiente', 'preparando', 'listo', 'entregado', 'cancelado'])], 'tiempo_estimado_minutos' => 'nullable|integer|min:1|max:240']);
-        $pedido->estado = $data['estado'];
-        if (isset($data['tiempo_estimado_minutos'])) {
-            $pedido->tiempo_estimado_minutos = $data['tiempo_estimado_minutos'];
-            $pedido->estimado_listo_en = now()->addMinutes($data['tiempo_estimado_minutos']);
-        }
-        $pedido->save();
-        return response()->json(['message' => 'Estado del pedido actualizado.', 'data' => ['estado' => $pedido->estado, 'estimado_listo_en' => $pedido->estimado_listo_en]]);
+        return PedidoResource::collection($this->pedidos->colaDeCocina());
+    }
+
+    public function show(Pedido $pedido): PedidoResource
+    {
+        return new PedidoResource($pedido->load(['mesa', 'usuario:id_usuario,nombres', 'detalles.producto', 'detalles.adiciones', 'mensajes']));
+    }
+
+    /** RF17 Crear pedido (con o sin productos iniciales). */
+    public function store(CrearPedidoRequest $request): JsonResponse
+    {
+        $pedido = $this->pedidos->crear(PedidoDTO::desdeArray($request->validated()), $request->user());
+
+        return $this->respuesta($pedido, "Pedido #{$pedido->id_pedido} creado para la mesa {$pedido->mesa->numero}.", 201);
+    }
+
+    /** RF19: observaciones generales. */
+    public function update(Request $request, Pedido $pedido): JsonResponse
+    {
+        $datos = $request->validate(['observaciones' => ['nullable', 'string', 'max:255']]);
+
+        return $this->respuesta($this->pedidos->actualizar($pedido, $datos['observaciones'] ?? null), 'Pedido actualizado.');
+    }
+
+    /** RF18 Agregar productos. */
+    public function agregarProducto(AgregarProductoRequest $request, Pedido $pedido): JsonResponse
+    {
+        $pedido = $this->pedidos->agregarProducto($pedido, LineaPedidoDTO::desdeArray($request->validated()));
+
+        return $this->respuesta($pedido, 'Producto agregado al pedido.');
+    }
+
+    /** RF19 Modificar una línea. */
+    public function modificarProducto(ModificarProductoRequest $request, Pedido $pedido, DetallePedido $detalle): JsonResponse
+    {
+        $observacion = trim((string) $request->validated('observacion'));
+        $pedido = $this->pedidos->modificarProducto(
+            $pedido,
+            $detalle,
+            (int) $request->validated('cantidad'),
+            $observacion === '' ? null : $observacion,
+        );
+
+        return $this->respuesta($pedido, 'Producto actualizado.');
+    }
+
+    /** RF19 Quitar una línea. */
+    public function quitarProducto(Pedido $pedido, DetallePedido $detalle): JsonResponse
+    {
+        return $this->respuesta($this->pedidos->quitarProducto($pedido, $detalle), 'Producto quitado del pedido.');
+    }
+
+    /** RF21 Enviar a cocina. */
+    public function enviarACocina(Pedido $pedido): JsonResponse
+    {
+        return $this->respuesta($this->pedidos->enviarACocina($pedido), "Pedido #{$pedido->id_pedido} enviado a cocina.");
+    }
+
+    public function preparar(Pedido $pedido): JsonResponse
+    {
+        return $this->respuesta($this->pedidos->iniciarPreparacion($pedido), "Pedido #{$pedido->id_pedido} en preparación.");
+    }
+
+    public function listo(Pedido $pedido): JsonResponse
+    {
+        return $this->respuesta($this->pedidos->marcarListo($pedido), "Pedido #{$pedido->id_pedido} listo para entregar.");
+    }
+
+    public function entregar(Pedido $pedido): JsonResponse
+    {
+        return $this->respuesta($this->pedidos->entregar($pedido), "Pedido #{$pedido->id_pedido} entregado.");
+    }
+
+    /** RF20 Cancelar pedido. */
+    public function cancelar(Request $request, Pedido $pedido): JsonResponse
+    {
+        $datos = $request->validate(['motivo' => ['nullable', 'string', 'max:255']]);
+        $motivo = trim((string) ($datos['motivo'] ?? ''));
+
+        return $this->respuesta(
+            $this->pedidos->cancelar($pedido, $motivo === '' ? null : $motivo),
+            "Pedido #{$pedido->id_pedido} cancelado.",
+        );
     }
 
     public function asignarMesero(Request $request, Pedido $pedido): JsonResponse
     {
         $mesero = $request->user();
-        if (! $mesero->estaActivo() || ! $mesero->tienePermiso('tomar_pedidos')) return response()->json(['message' => 'El usuario debe estar activo y tener permiso para tomar pedidos.'], 422);
-        $pedido->update(['id_usuario' => $mesero->id_usuario]);
+        if (! $mesero->estaActivo() || ! $mesero->tienePermiso('tomar_pedidos')) {
+            return response()->json(['message' => 'El usuario debe estar activo y tener permiso para tomar pedidos.'], 422);
+        }
+
+        $pedido->forceFill(['id_usuario' => $mesero->id_usuario])->save();
+
         return response()->json(['message' => 'Mesero asignado.', 'data' => ['nombres' => $mesero->nombres]]);
     }
 
     public function responder(Request $request, Pedido $pedido): JsonResponse
     {
-        $data = $request->validate(['mensaje' => 'required|string|min:2|max:1000']);
-        $mensaje = MensajePedido::create(['id_pedido' => $pedido->id_pedido, 'id_usuario' => $request->user()->id_usuario,
-            'autor' => 'personal', 'clasificacion' => 'recomendacion', 'visibilidad' => 'privado', 'estado_publicacion' => 'no_aplica', 'mensaje' => $data['mensaje']]);
-        return response()->json(['data' => ['id_mensaje' => $mensaje->id_mensaje, 'mensaje' => $mensaje->mensaje]] , 201);
+        $datos = $request->validate(['mensaje' => ['required', 'string', 'min:2', 'max:1000']]);
+        $mensaje = MensajePedido::create([
+            'id_pedido' => $pedido->id_pedido,
+            'id_usuario' => $request->user()->id_usuario,
+            'autor' => 'personal',
+            'clasificacion' => 'recomendacion',
+            'visibilidad' => 'privado',
+            'estado_publicacion' => 'no_aplica',
+            'mensaje' => $datos['mensaje'],
+        ]);
+
+        return response()->json(['data' => ['id_mensaje' => $mensaje->id_mensaje, 'mensaje' => $mensaje->mensaje]], 201);
     }
 
     public function moderarMensaje(Request $request, MensajePedido $mensaje): JsonResponse
     {
-        $data = $request->validate(['estado_publicacion' => ['required', Rule::in(['publicado', 'oculto'])]]);
-        if ($mensaje->visibilidad !== 'publico') return response()->json(['message' => 'Solo se moderan recomendaciones públicas.'], 422);
-        $mensaje->update(['estado_publicacion' => $data['estado_publicacion']]);
+        $datos = $request->validate(['estado_publicacion' => ['required', Rule::in(['publicado', 'oculto'])]]);
+        if ($mensaje->visibilidad !== 'publico') {
+            return response()->json(['message' => 'Solo se moderan recomendaciones públicas.'], 422);
+        }
+
+        $mensaje->update(['estado_publicacion' => $datos['estado_publicacion']]);
+
         return response()->json(['message' => 'Recomendación moderada.']);
+    }
+
+    private function respuesta(Pedido $pedido, string $mensaje, int $codigo = 200): JsonResponse
+    {
+        return response()->json(['message' => $mensaje, 'data' => new PedidoResource($pedido)], $codigo);
     }
 }

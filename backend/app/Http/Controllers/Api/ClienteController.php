@@ -11,14 +11,18 @@ use App\Models\MensajePedido;
 use App\Models\Pedido;
 use App\Models\Producto;
 use App\Models\Promocion;
+use App\Services\PedidoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ClienteController extends Controller
 {
+    public function __construct(private readonly PedidoService $pedidos) {}
+
     public function menu(): JsonResponse
     {
         $productos = Producto::with(['categoria', 'adiciones' => fn ($q) => $q->where('activa', true)])
@@ -79,21 +83,25 @@ class ClienteController extends Controller
             }
             $pedido = Pedido::create([
                 'codigo_seguimiento' => (string) Str::uuid(), 'tipo_pedido' => $data['tipo_pedido'],
-                'id_mesa' => $mesa?->id_mesa, 'cliente_nombre' => $data['cliente_nombre'], 'cliente_telefono' => $data['cliente_telefono'],
+                'id_mesa' => $mesa?->id_mesa, 'id_usuario' => null,
+                'cliente_nombre' => $data['cliente_nombre'], 'cliente_telefono' => $data['cliente_telefono'],
                 'estado' => 'pendiente', 'tiempo_estimado_minutos' => 30, 'estimado_listo_en' => now()->addMinutes(30),
                 'subtotal' => $subtotal, 'descuento' => $descuentoTotal, 'propina' => $tip,
-                'total' => $subtotal - $descuentoTotal + $tip, 'estado_pago' => 'pendiente',
+                'estado_pago' => 'pendiente',
             ]);
             foreach ($items as $line) {
                 $detalle = DetallePedido::create([
                     'id_pedido' => $pedido->id_pedido, 'id_producto' => $line['producto']->id_producto,
                     'nombre_producto' => $line['producto']->nombre, 'precio_unitario' => $line['base'],
-                    'cantidad' => $line['item']['cantidad'], 'nota' => $line['item']['nota'] ?? null,
-                    'subtotal' => $line['lineSubtotal'], 'descuento_porcentaje' => $line['pct'], 'descuento' => $line['lineDiscount'],
+                    'cantidad' => $line['item']['cantidad'], 'observacion' => $line['item']['nota'] ?? null,
+                    'descuento_porcentaje' => $line['pct'], 'descuento' => $line['lineDiscount'],
                 ]);
-                foreach ($line['adiciones'] as $add) DetallePedidoAdicion::create(['id_detalle_pedido' => $detalle->id_detalle_pedido, 'id_adicion' => $add->id_adicion, 'nombre' => $add->nombre, 'precio' => $add->precio]);
+                $foreignKey = Schema::hasColumn('detalle_pedido_adiciones', 'id_detalle') ? 'id_detalle' : 'id_detalle_pedido';
+                foreach ($line['adiciones'] as $add) DetallePedidoAdicion::create([$foreignKey => $detalle->getKey(), 'id_adicion' => $add->id_adicion, 'nombre' => $add->nombre, 'precio' => $add->precio]);
             }
-            return $pedido;
+            $pedido = $this->pedidos->enviarACocina($pedido);
+
+            return $pedido->refresh();
         });
         return response()->json(['data' => $this->pedidoPublico($pedido->load(['detalles.adiciones', 'mesa']))], 201);
     }
@@ -117,10 +125,10 @@ class ClienteController extends Controller
     {
         $publicos = MensajePedido::where('id_pedido', $pedido->id_pedido)->where('visibilidad', 'publico')->where('estado_publicacion', 'publicado')->get(['mensaje', 'created_at']);
         return ['codigo_seguimiento' => $pedido->codigo_seguimiento, 'tipo_pedido' => $pedido->tipo_pedido, 'mesa' => $pedido->mesa?->numero,
-            'estado' => $pedido->estado, 'tiempo_estimado_minutos' => $pedido->tiempo_estimado_minutos, 'estimado_listo_en' => $pedido->estimado_listo_en,
+            'estado' => $pedido->estado->value, 'tiempo_estimado_minutos' => $pedido->tiempo_estimado_minutos, 'estimado_listo_en' => $pedido->estimado_listo_en,
             'mesero' => $pedido->mesero?->nombres, 'subtotal' => (float) $pedido->subtotal, 'descuento' => (float) $pedido->descuento,
-            'propina' => (float) $pedido->propina, 'total' => (float) $pedido->total,
-            'items' => $pedido->detalles->map(fn ($d) => ['nombre' => $d->nombre_producto, 'cantidad' => $d->cantidad, 'subtotal' => (float) $d->subtotal,
+            'propina' => (float) $pedido->propina, 'total' => $pedido->total(),
+            'items' => $pedido->detalles->map(fn ($d) => ['nombre' => $d->nombre_producto ?: $d->producto?->nombre, 'cantidad' => $d->cantidad, 'subtotal' => max(0, $d->subtotal() - (float) ($d->descuento ?? 0)),
                 'adiciones' => $d->adiciones->map(fn ($a) => ['nombre' => $a->nombre, 'precio' => (float) $a->precio])]),
             'mensajes' => $pedido->mensajes()->where(fn ($q) => $q->where('visibilidad', 'privado')->orWhere(fn ($pub) => $pub->where('visibilidad', 'publico')->where('estado_publicacion', 'publicado')))->get(['autor', 'visibilidad', 'mensaje', 'created_at']),
             'recomendaciones_publicas' => $publicos];

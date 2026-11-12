@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Producto del menú: plato o bebida (RF07 a RF11).
@@ -59,6 +60,7 @@ class Producto extends Model
         return [
             'precio' => 'decimal:2',
             'disponible' => 'boolean',
+            'agotado_por_inventario' => 'boolean',
             'activo' => 'boolean',
             'fecha_creacion' => 'datetime',
             'fecha_modificacion' => 'datetime',
@@ -81,9 +83,35 @@ class Producto extends Model
         $this->categoria()->associate($categoria)->save();
     }
 
+    /** Receta del producto (RF38, Módulo 5). */
+    public function receta(): HasMany
+    {
+        return $this->hasMany(DetalleReceta::class, 'id_producto', 'id_producto');
+    }
+
+    /**
+     * CU05: cambio manual (cocinero o administrador). Quita la marca del
+     * inventario, para que una reposición no pise la decisión manual.
+     */
     public function marcarDisponible(bool $disponible): void
     {
-        $this->forceFill(['disponible' => $disponible])->save();
+        $this->forceFill(['disponible' => $disponible, 'agotado_por_inventario' => false])->save();
+    }
+
+    /** RF40: el inventario agota (true) o repone (false) el producto. */
+    public function marcarAgotadoPorInventario(bool $agotado): void
+    {
+        $this->forceFill(['disponible' => ! $agotado, 'agotado_por_inventario' => $agotado])->save();
+    }
+
+    /**
+     * Porciones de la receta (RF38). Sin receta, devuelve una lista vacía.
+     *
+     * @return Collection<int, DetalleReceta>
+     */
+    public function insumosNecesarios(int $porciones = 1): Collection
+    {
+        return $this->receta->map(fn (DetalleReceta $linea) => $linea->setAttribute('cantidad_total', $linea->cantidadPara($porciones)));
     }
 
     /** ¿Se puede pedir? Activo, disponible y en una categoría activa. */
