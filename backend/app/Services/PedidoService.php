@@ -146,8 +146,9 @@ class PedidoService
             throw new ReglaNegocioException('Agrega al menos un producto antes de enviar el pedido a cocina.');
         }
 
+        // Se quedan solo las líneas cuyo producto ya NO se puede pedir.
         $agotados = $pedido->detalles
-            ->reject(fn (DetallePedido $detalle) => ! $detalle->producto?->estaEnMenu())
+            ->reject(fn (DetallePedido $detalle) => (bool) $detalle->producto?->estaEnMenu())
             ->map(fn (DetallePedido $detalle) => $detalle->producto?->nombre ?? 'Producto eliminado')
             ->unique()
             ->values();
